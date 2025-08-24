@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\Users\\mkhal\\dev\\ftl-hi-res-audio-player\\app\\src\\main\")",
+      "WebFetch(domain:fonts.google.com)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(dir \"C:\\Users\\mkhal\\dev\\ftl-hi-res-audio-player\\app\\src\\main\\res\\font\")",
+      "Bash(find:*)",
+      "Bash(.gradlew assembleDebug)",
+      "Bash(gradle:*)",
+      "Bash(dir)",
+      "Bash(chmod:*)",
+      "Bash(./gradlew:*)",
+      "Bash(dir:*)",
+      "Bash(powershell:*)",
+      "Bash(.gradlew.bat --version)",
+      "Bash(cmd /c:*)",
+      "Bash(timeout 30 ./gradlew:*)",
+      "Bash(grep:*)",
+      "Bash(.gradlew compileDebugKotlin)",
+      "Bash(.\\gradlew.bat compileDebugKotlin:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote add:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git config:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
