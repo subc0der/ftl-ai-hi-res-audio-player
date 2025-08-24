@@ -188,6 +188,18 @@
             </intent-filter>
         </service>
 
+        <!-- Media Scanner Service for Library Indexing -->
+        <service
+            android:name=".service.MediaScannerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync">
+            
+            <intent-filter>
+                <action android:name="com.ftl.hires.audioplayer.MEDIA_SCAN" />
+            </intent-filter>
+        </service>
+
         <!-- Media Button Receiver -->
         <receiver
             android:name="androidx.media.session.MediaButtonReceiver"

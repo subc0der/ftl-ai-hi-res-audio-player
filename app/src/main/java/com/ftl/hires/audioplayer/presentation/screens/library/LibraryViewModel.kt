@@ -10,6 +10,10 @@ import com.ftl.hires.audioplayer.data.database.dao.LibraryStats
 import com.ftl.hires.audioplayer.data.repository.TrackRepository
 import com.ftl.hires.audioplayer.data.repository.LibraryRepository
 import com.ftl.hires.audioplayer.data.repository.PlaylistRepository
+import com.ftl.hires.audioplayer.data.repository.MediaScannerRepository
+import com.ftl.hires.audioplayer.service.MediaScannerService
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -19,7 +23,9 @@ import javax.inject.Inject
 class LibraryViewModel @Inject constructor(
     private val trackRepository: TrackRepository,
     private val libraryRepository: LibraryRepository,
-    private val playlistRepository: PlaylistRepository
+    private val playlistRepository: PlaylistRepository,
+    private val mediaScannerRepository: MediaScannerRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LibraryUiState())
@@ -30,6 +36,13 @@ class LibraryViewModel @Inject constructor(
 
     private val _selectedTab = MutableStateFlow(LibraryTab.TRACKS)
     val selectedTab: StateFlow<LibraryTab> = _selectedTab.asStateFlow()
+
+    // Scanner progress tracking
+    private val _scanProgress = MutableStateFlow<MediaScannerRepository.ScanProgress?>(null)
+    val scanProgress: StateFlow<MediaScannerRepository.ScanProgress?> = _scanProgress.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
 
     // Combined flow for filtered tracks based on search
     val filteredTracks: StateFlow<List<Track>> = combine(
@@ -268,6 +281,85 @@ class LibraryViewModel @Inject constructor(
                 selectedAlbum = null,
                 selectedPlaylist = null
             ) 
+        }
+    }
+
+    // Scanner functions
+    fun startLibraryScan() {
+        viewModelScope.launch {
+            try {
+                _isScanning.value = true
+                _uiState.update { it.copy(error = null) }
+                
+                // Start scanner service
+                MediaScannerService.startFullScan(context)
+                
+                // Monitor scan progress
+                mediaScannerRepository.scanMusicLibrary().collect { progress ->
+                    _scanProgress.value = progress
+                    
+                    if (progress.isComplete || progress.error != null) {
+                        _isScanning.value = false
+                        if (progress.error != null) {
+                            _uiState.update { 
+                                it.copy(error = "Scan failed: ${progress.error}") 
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _isScanning.value = false
+                _uiState.update { 
+                    it.copy(error = "Failed to start scan: ${e.message}") 
+                }
+            }
+        }
+    }
+
+    fun startQuickScan() {
+        viewModelScope.launch {
+            try {
+                _isScanning.value = true
+                _uiState.update { it.copy(error = null) }
+                
+                // Start quick scanner service
+                MediaScannerService.startQuickScan(context)
+                
+                // Monitor scan progress
+                mediaScannerRepository.quickScan().collect { progress ->
+                    _scanProgress.value = progress
+                    
+                    if (progress.isComplete || progress.error != null) {
+                        _isScanning.value = false
+                        if (progress.error != null) {
+                            _uiState.update { 
+                                it.copy(error = "Quick scan failed: ${progress.error}") 
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _isScanning.value = false
+                _uiState.update { 
+                    it.copy(error = "Failed to start quick scan: ${e.message}") 
+                }
+            }
+        }
+    }
+
+    fun stopScan() {
+        MediaScannerService.stopScan(context)
+        _isScanning.value = false
+        _scanProgress.value = null
+    }
+
+    fun checkLibraryEmpty(): Boolean {
+        return try {
+            // This would need to be implemented synchronously or cached
+            // For now, return false as placeholder
+            false
+        } catch (e: Exception) {
+            false
         }
     }
 }

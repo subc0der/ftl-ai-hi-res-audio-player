@@ -25,6 +25,7 @@ import com.ftl.hires.audioplayer.presentation.theme.OrbitronFontFamily
 import com.ftl.hires.audioplayer.presentation.theme.FTLAudioTypography
 import com.ftl.hires.audioplayer.presentation.components.FTLSearchBar
 import com.ftl.hires.audioplayer.presentation.screens.library.components.*
+import com.ftl.hires.audioplayer.data.repository.MediaScannerRepository
 
 /**
  * AudioArchive Screen - FTL Hi-Res Audio Library
@@ -53,6 +54,13 @@ fun AudioArchiveScreen(
     val artists by viewModel.filteredArtists.collectAsStateWithLifecycle()
     val albums by viewModel.filteredAlbums.collectAsStateWithLifecycle()
     val playlists by viewModel.filteredPlaylists.collectAsStateWithLifecycle()
+    
+    // Scanner states
+    val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
+    val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    
+    // Check if library is empty
+    val isLibraryEmpty = tracks.isEmpty() && artists.isEmpty() && albums.isEmpty() && !uiState.isLoading
 
     Column(
         modifier = modifier
@@ -80,44 +88,67 @@ fun AudioArchiveScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
         ) {
-            when (selectedTab) {
-                LibraryTab.TRACKS -> {
-                    TracksTab(
-                        tracks = tracks,
-                        onTrackSelected = { track ->
-                            viewModel.onTrackSelected(track)
-                            onTrackSelected(track.id)
-                        },
-                        onToggleFavorite = viewModel::toggleTrackFavorite,
-                        isLoading = uiState.isLoading,
-                        modifier = Modifier.fillMaxSize()
-                    )
+            if (isLibraryEmpty && !isScanning) {
+                // Show empty state with scan options
+                LibraryEmptyState(
+                    isScanning = isScanning,
+                    scanProgress = scanProgress,
+                    onStartScan = viewModel::startLibraryScan,
+                    onStartQuickScan = viewModel::startQuickScan,
+                    onStopScan = viewModel::stopScan,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                when (selectedTab) {
+                    LibraryTab.TRACKS -> {
+                        TracksTab(
+                            tracks = tracks,
+                            onTrackSelected = { track ->
+                                viewModel.onTrackSelected(track)
+                                onTrackSelected(track.id)
+                            },
+                            onToggleFavorite = viewModel::toggleTrackFavorite,
+                            isLoading = uiState.isLoading,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    LibraryTab.ARTISTS -> {
+                        ArtistsTab(
+                            artists = artists,
+                            onArtistSelected = viewModel::onArtistSelected,
+                            isLoading = uiState.isLoading,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    LibraryTab.ALBUMS -> {
+                        AlbumsTab(
+                            albums = albums,
+                            onAlbumSelected = viewModel::onAlbumSelected,
+                            isLoading = uiState.isLoading,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    LibraryTab.PLAYLISTS -> {
+                        PlaylistsTab(
+                            playlists = playlists,
+                            onPlaylistSelected = { playlist ->
+                                viewModel.onPlaylistSelected(playlist)
+                                onPlaylistSelected(playlist.id)
+                            },
+                            isLoading = uiState.isLoading,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
-                LibraryTab.ARTISTS -> {
-                    ArtistsTab(
-                        artists = artists,
-                        onArtistSelected = viewModel::onArtistSelected,
-                        isLoading = uiState.isLoading,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                LibraryTab.ALBUMS -> {
-                    AlbumsTab(
-                        albums = albums,
-                        onAlbumSelected = viewModel::onAlbumSelected,
-                        isLoading = uiState.isLoading,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                LibraryTab.PLAYLISTS -> {
-                    PlaylistsTab(
-                        playlists = playlists,
-                        onPlaylistSelected = { playlist ->
-                            viewModel.onPlaylistSelected(playlist)
-                            onPlaylistSelected(playlist.id)
-                        },
-                        isLoading = uiState.isLoading,
-                        modifier = Modifier.fillMaxSize()
+                
+                // Show scan progress overlay when scanning with existing content
+                if (isScanning && !isLibraryEmpty) {
+                    ScanProgressOverlay(
+                        scanProgress = scanProgress,
+                        onStopScan = viewModel::stopScan,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
                     )
                 }
             }
@@ -344,6 +375,80 @@ private fun StatItem(
             style = FTLAudioTypography.eqBandLabel,
             color = SubcoderColors.LightGrey
         )
+    }
+}
+
+/**
+ * Scan progress overlay for when scanning with existing content
+ */
+@Composable
+private fun ScanProgressOverlay(
+    scanProgress: MediaScannerRepository.ScanProgress?,
+    onStopScan: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = SubcoderColors.DarkGrey.copy(alpha = 0.95f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = SubcoderColors.ElectricBlue,
+                    strokeWidth = 2.dp,
+                    progress = scanProgress?.let { progress ->
+                        if (progress.totalFiles > 0) {
+                            progress.filesScanned.toFloat() / progress.totalFiles
+                        } else 0f
+                    } ?: 0f
+                )
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                Column {
+                    Text(
+                        text = "Scanning library...",
+                        style = FTLAudioTypography.bodyMedium,
+                        color = SubcoderColors.White,
+                        fontWeight = FontWeight.Medium
+                    )
+                    
+                    scanProgress?.let { progress ->
+                        Text(
+                            text = if (progress.totalFiles > 0) {
+                                "${progress.filesScanned}/${progress.totalFiles} files"
+                            } else {
+                                "${progress.filesScanned} files processed"
+                            },
+                            style = FTLAudioTypography.bodySmall,
+                            color = SubcoderColors.LightGrey
+                        )
+                    }
+                }
+            }
+            
+            IconButton(
+                onClick = onStopScan
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Stop scan",
+                    tint = SubcoderColors.WarningOrange
+                )
+            }
+        }
     }
 }
 

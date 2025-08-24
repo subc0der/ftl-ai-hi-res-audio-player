@@ -10,12 +10,18 @@ interface TrackDao {
     
     @Query("SELECT * FROM tracks ORDER BY title ASC")
     fun getAllTracks(): Flow<List<Track>>
+
+    @Query("SELECT * FROM tracks ORDER BY title ASC")
+    suspend fun getAllTracksSync(): List<Track>
     
     @Query("SELECT * FROM tracks WHERE id = :trackId")
     suspend fun getTrackById(trackId: String): Track?
     
     @Query("SELECT * FROM tracks WHERE file_path = :filePath")
     suspend fun getTrackByFilePath(filePath: String): Track?
+
+    @Query("SELECT * FROM tracks WHERE file_path = :filePath")  
+    suspend fun getTrackByPath(filePath: String): Track?
     
     @Query("""
         SELECT tracks.*, artists.name as artist_name, albums.title as album_name 

@@ -70,8 +70,8 @@ interface LibraryDao {
     @Query("SELECT * FROM albums WHERE id = :albumId")
     suspend fun getAlbumById(albumId: String): Album?
     
-    @Query("SELECT * FROM albums WHERE title = :title AND artist_id = :artistId")
-    suspend fun getAlbumByTitleAndArtist(title: String, artistId: String?): Album?
+    @Query("SELECT * FROM albums WHERE title = :title AND artist = :artist")
+    suspend fun getAlbumByTitleAndArtist(title: String, artist: String): Album?
     
     @Query("SELECT * FROM albums WHERE artist_id = :artistId ORDER BY year ASC, title ASC")
     fun getAlbumsByArtist(artistId: String): Flow<List<Album>>
@@ -174,17 +174,34 @@ interface LibraryDao {
     @Query("DELETE FROM albums WHERE id = :albumId")
     suspend fun deleteAlbumById(albumId: String)
     
-    // Cleanup operations
+    // Cleanup operations - get orphaned entries
+    @Query("""
+        SELECT * FROM artists 
+        WHERE name NOT IN (SELECT DISTINCT artist FROM tracks WHERE artist IS NOT NULL)
+    """)
+    suspend fun getArtistsWithNoTracks(): List<Artist>
+    
+    @Query("""
+        SELECT * FROM albums 
+        WHERE title || '|' || artist NOT IN (
+            SELECT DISTINCT album || '|' || artist FROM tracks 
+            WHERE album IS NOT NULL AND artist IS NOT NULL
+        )
+    """)
+    suspend fun getAlbumsWithNoTracks(): List<Album>
+    
     @Query("""
         DELETE FROM artists 
-        WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks WHERE artist_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT artist_id FROM albums WHERE artist_id IS NOT NULL)
+        WHERE name NOT IN (SELECT DISTINCT artist FROM tracks WHERE artist IS NOT NULL)
     """)
     suspend fun deleteOrphanedArtists()
     
     @Query("""
         DELETE FROM albums 
-        WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE album_id IS NOT NULL)
+        WHERE title || '|' || artist NOT IN (
+            SELECT DISTINCT album || '|' || artist FROM tracks 
+            WHERE album IS NOT NULL AND artist IS NOT NULL
+        )
     """)
     suspend fun deleteOrphanedAlbums()
     
