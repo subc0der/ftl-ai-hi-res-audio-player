@@ -220,8 +220,7 @@ class MediaScannerService : Service() {
                         _scanState.value = ScanState.Complete
                         Timber.i("Music library scan completed. Scanned ${progress.filesScanned} files")
                         
-                        // Stop foreground service after a short delay
-                        launch {
+                        serviceScope.launch {
                             kotlinx.coroutines.delay(3000) // Show completion for 3 seconds
                             stopForegroundService()
                         }
