@@ -337,15 +337,20 @@ class LibraryIndexer @Inject constructor(
     suspend fun findModifiedTracks(): List<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val allTracks = trackDao.getAllTracksSync()
+                val batchSize = 500
+                var offset = 0
                 val modifiedPaths = mutableListOf<String>()
-
-                allTracks.forEach { track ->
-                    val file = File(track.filePath)
-                    if (file.exists() && file.lastModified() > track.addedAt) {
-                        modifiedPaths.add(track.filePath)
+                var batch: List<Track>
+                do {
+                    batch = trackDao.getTracksBatch(offset, batchSize)
+                    batch.forEach { track ->
+                        val file = File(track.filePath)
+                        if (file.exists() && file.lastModified() > track.addedAt) {
+                            modifiedPaths.add(track.filePath)
+                        }
                     }
-                }
+                    offset += batchSize
+                } while (batch.isNotEmpty())
 
                 Timber.d("Found ${modifiedPaths.size} modified tracks")
                 modifiedPaths
