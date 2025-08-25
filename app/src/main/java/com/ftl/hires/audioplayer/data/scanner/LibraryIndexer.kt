@@ -274,18 +274,26 @@ class LibraryIndexer @Inject constructor(
     suspend fun removeDeletedTracks(): Int {
         return withContext(Dispatchers.IO) {
             try {
-                val allTracks = trackDao.getAllTracksSync()
+                val batchSize = 500
+                var offset = 0
                 var deletedCount = 0
+                var batch: List<Track>
 
-                allTracks.forEach { track ->
-                    val file = File(track.filePath)
-                    if (!file.exists()) {
-                        trackDao.deleteTrack(track)
-                        deletedCount++
-                        Timber.d("Removed deleted track: ${track.filePath}")
+                do {
+                    batch = trackDao.getTracksBatch(offset, batchSize)
+                    if (batch.isEmpty()) break
+
+                    batch.forEach { track ->
+                        val file = File(track.filePath)
+                        if (!file.exists()) {
+                            trackDao.deleteTrack(track)
+                            deletedCount++
+                            Timber.d("Removed deleted track: ${track.filePath}")
+                        }
                     }
-                }
 
+                    offset += batchSize
+                } while (batch.size == batchSize)
                 // Clean up orphaned artists and albums
                 cleanupOrphanedEntries()
 
