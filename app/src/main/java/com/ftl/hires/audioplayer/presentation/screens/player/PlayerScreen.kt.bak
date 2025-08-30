@@ -1,0 +1,521 @@
+package com.ftl.hires.audioplayer.presentation.screens.player
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import com.ftl.hires.audioplayer.presentation.theme.SubcoderColors
+import com.ftl.hires.audioplayer.presentation.theme.FTLAudioTypography
+import com.ftl.hires.audioplayer.presentation.theme.OrbitronFontFamily
+import com.ftl.hires.audioplayer.presentation.screens.player.components.*
+
+/**
+ * Audio Bridge - FTL Hi-Res Audio Player Now Playing Screen
+ * 
+ * Full-screen audiophile player interface with:
+ * - Large album artwork with cyberpunk glow effects
+ * - Hi-res audio format information display
+ * - Professional transport controls
+ * - Waveform progress visualization
+ * - Gesture-based playback control
+ * - Real-time audio analysis display
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioBridgeScreen(
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: PlayerViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val currentTrack by viewModel.currentTrack.collectAsStateWithLifecycle()
+    val audioInfo by viewModel.audioInfo.collectAsStateWithLifecycle()
+    
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+
+    // Background with cyberpunk gradient
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        SubcoderColors.PureBlack,
+                        SubcoderColors.DarkGrey.copy(alpha = 0.3f),
+                        SubcoderColors.PureBlack
+                    )
+                )
+            )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { viewModel.togglePlayPause() }
+                )
+            }
+    ) {
+        if (isLandscape) {
+            LandscapePlayerLayout(
+                currentTrack = currentTrack,
+                playbackState = playbackState,
+                audioInfo = audioInfo,
+                uiState = uiState,
+                onPlayPause = viewModel::togglePlayPause,
+                onPrevious = viewModel::previousTrack,
+                onNext = viewModel::nextTrack,
+                onSeek = viewModel::seekTo,
+                onToggleShuffle = viewModel::toggleShuffle,
+                onToggleRepeat = viewModel::toggleRepeat,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            PortraitPlayerLayout(
+                currentTrack = currentTrack,
+                playbackState = playbackState,
+                audioInfo = audioInfo,
+                uiState = uiState,
+                onPlayPause = viewModel::togglePlayPause,
+                onPrevious = viewModel::previousTrack,
+                onNext = viewModel::nextTrack,
+                onSeek = viewModel::seekTo,
+                onToggleShuffle = viewModel::toggleShuffle,
+                onToggleRepeat = viewModel::toggleRepeat,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onNavigateBack = onNavigateBack,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Error handling
+        uiState.error?.let { error ->
+            LaunchedEffect(error) {
+                // Handle error display
+                kotlinx.coroutines.delay(3000)
+                viewModel.clearError()
+            }
+        }
+    }
+}
+
+/**
+ * Portrait layout for phones
+ */
+@Composable
+private fun PortraitPlayerLayout(
+    currentTrack: TrackInfo?,
+    playbackState: PlaybackState,
+    audioInfo: AudioInfo?,
+    uiState: PlayerUiState,
+    onPlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Header with back button and options
+        PlayerHeader(
+            onNavigateBack = onNavigateBack,
+            onShowQueue = { /* TODO: Show queue */ },
+            onShowOptions = { /* TODO: Show options */ },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Album artwork - takes up most of the space
+        AlbumArtDisplay(
+            artworkPath = currentTrack?.artworkPath,
+            isPlaying = playbackState.isPlaying,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(24.dp))
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Track information
+        TrackInfoSection(
+            track = currentTrack,
+            audioInfo = audioInfo,
+            onToggleFavorite = onToggleFavorite,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Progress slider
+        ProgressSlider(
+            progress = playbackState.progress,
+            duration = playbackState.duration,
+            onSeek = onSeek,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Playback controls
+        PlaybackControls(
+            isPlaying = playbackState.isPlaying,
+            isShuffleEnabled = playbackState.isShuffleEnabled,
+            repeatMode = playbackState.repeatMode,
+            onPlayPause = onPlayPause,
+            onPrevious = onPrevious,
+            onNext = onNext,
+            onToggleShuffle = onToggleShuffle,
+            onToggleRepeat = onToggleRepeat,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Fill remaining space
+        Spacer(modifier = Modifier.weight(1f))
+    }
+}
+
+/**
+ * Landscape layout for tablets and landscape phones
+ */
+@Composable
+private fun LandscapePlayerLayout(
+    currentTrack: TrackInfo?,
+    playbackState: PlaybackState,
+    audioInfo: AudioInfo?,
+    uiState: PlayerUiState,
+    onPlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(24.dp)
+    ) {
+        // Left side - Album art
+        AlbumArtDisplay(
+            artworkPath = currentTrack?.artworkPath,
+            isPlaying = playbackState.isPlaying,
+            modifier = Modifier
+                .weight(1f)
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(24.dp))
+        )
+
+        Spacer(modifier = Modifier.width(32.dp))
+
+        // Right side - Controls and info
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Header
+            PlayerHeader(
+                onNavigateBack = onNavigateBack,
+                onShowQueue = { /* TODO */ },
+                onShowOptions = { /* TODO */ },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Track info
+            TrackInfoSection(
+                track = currentTrack,
+                audioInfo = audioInfo,
+                onToggleFavorite = onToggleFavorite,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Progress
+            ProgressSlider(
+                progress = playbackState.progress,
+                duration = playbackState.duration,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Controls
+            PlaybackControls(
+                isPlaying = playbackState.isPlaying,
+                isShuffleEnabled = playbackState.isShuffleEnabled,
+                repeatMode = playbackState.repeatMode,
+                onPlayPause = onPlayPause,
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Audio info panel
+            audioInfo?.let { info ->
+                AudioInfoPanel(
+                    audioInfo = info,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Player header with navigation and options
+ */
+@Composable
+private fun PlayerHeader(
+    onNavigateBack: () -> Unit,
+    onShowQueue: () -> Unit,
+    onShowOptions: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = onNavigateBack,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = SubcoderColors.ElectricBlue
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = "Back",
+                modifier = Modifier.size(28.dp)
+            )
+        }
+
+        Text(
+            text = "AUDIO BRIDGE",
+            style = FTLAudioTypography.librarySection.copy(fontSize = 16.sp),
+            color = SubcoderColors.ElectricBlue,
+            fontFamily = OrbitronFontFamily,
+            fontWeight = FontWeight.Bold
+        )
+
+        Row {
+            IconButton(
+                onClick = onShowQueue,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = SubcoderColors.LightGrey
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.QueueMusic,
+                    contentDescription = "Queue",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            IconButton(
+                onClick = onShowOptions,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = SubcoderColors.LightGrey
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Track information section with title, artist, and favorite button
+ */
+@Composable
+private fun TrackInfoSection(
+    track: TrackInfo?,
+    audioInfo: AudioInfo?,
+    onToggleFavorite: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Track title
+        Text(
+            text = track?.title ?: "No Track Playing",
+            style = FTLAudioTypography.librarySection.copy(fontSize = 24.sp),
+            color = SubcoderColors.White,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Artist name
+        Text(
+            text = track?.artist ?: "Unknown Artist",
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
+            color = SubcoderColors.LightGrey,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Album name
+        Text(
+            text = track?.album ?: "Unknown Album",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SubcoderColors.MediumGrey,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Audio format info and favorite button
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Hi-res badge
+            if (audioInfo?.isHighRes == true) {
+                Surface(
+                    color = SubcoderColors.ElectricBlue.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, SubcoderColors.ElectricBlue.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = "HI-RES",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SubcoderColors.ElectricBlue,
+                        fontFamily = OrbitronFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Format info
+            audioInfo?.let { info ->
+                Text(
+                    text = buildString {
+                        append(info.format.uppercase())
+                        if (info.sampleRate != null && info.bitDepth != null) {
+                            append(" • ${info.sampleRate/1000}kHz/${info.bitDepth}bit")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SubcoderColors.NeonCyan,
+                    fontFamily = OrbitronFontFamily
+                )
+            }
+
+            // Favorite button
+            IconButton(
+                onClick = onToggleFavorite,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = if (track?.isFavorite == true) 
+                        SubcoderColors.WarningOrange else SubcoderColors.MediumGrey
+                )
+            ) {
+                Icon(
+                    imageVector = if (track?.isFavorite == true) 
+                        Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Toggle Favorite",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+// Data classes for the player
+data class TrackInfo(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val artworkPath: String?,
+    val duration: Long,
+    val isFavorite: Boolean
+)
+
+data class PlaybackState(
+    val isPlaying: Boolean = false,
+    val progress: Float = 0f,
+    val duration: Long = 0L,
+    val isShuffleEnabled: Boolean = false,
+    val repeatMode: RepeatMode = RepeatMode.OFF
+)
+
+data class AudioInfo(
+    val format: String,
+    val sampleRate: Int?,
+    val bitDepth: Int?,
+    val bitrate: Int?,
+    val isHighRes: Boolean
+)
+
+enum class RepeatMode {
+    OFF, ALL, ONE
+}
+
+data class PlayerUiState(
+    val isLoading: Boolean = false,
+    val error: String? = null
+)

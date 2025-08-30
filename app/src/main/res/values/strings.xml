@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FTL Hi-Res Audio Player</string>
+    <string name="player_title">Audio Bridge</string>
+    <string name="status_ready">System Initialized</string>
+    <string name="button_ready">Audio Bridge Ready</string>
+</resources>

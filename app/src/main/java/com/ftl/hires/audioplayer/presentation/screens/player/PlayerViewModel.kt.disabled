@@ -1,0 +1,453 @@
+package com.ftl.hires.audioplayer.presentation.screens.player
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ftl.hires.audioplayer.audio.AudioController
+import com.ftl.hires.audioplayer.data.database.entities.Track
+import com.ftl.hires.audioplayer.data.repository.TrackRepository
+import com.ftl.hires.audioplayer.data.repository.PlaylistRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import javax.inject.Inject
+
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
+    private val trackRepository: TrackRepository,
+    private val playlistRepository: PlaylistRepository,
+    private val audioController: AudioController
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(PlayerUiState())
+    val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    private val _playbackState = MutableStateFlow(PlaybackState())
+    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    private val _currentTrack = MutableStateFlow<TrackInfo?>(null)
+    val currentTrack: StateFlow<TrackInfo?> = _currentTrack.asStateFlow()
+
+    private val _audioInfo = MutableStateFlow<AudioInfo?>(null)
+    val audioInfo: StateFlow<AudioInfo?> = _audioInfo.asStateFlow()
+
+    // Current queue and position
+    private val _currentQueue = MutableStateFlow<List<TrackInfo>>(emptyList())
+    val currentQueue: StateFlow<List<TrackInfo>> = _currentQueue.asStateFlow()
+
+    private val _queuePosition = MutableStateFlow(0)
+    val queuePosition: StateFlow<Int> = _queuePosition.asStateFlow()
+
+    init {
+        // Observe audio controller state
+        observeAudioController()
+    }
+
+    /**
+     * Observe AudioController state changes
+     */
+    private fun observeAudioController() {
+        // Observe current track
+        viewModelScope.launch {
+            audioController.currentTrack.collect { track ->
+                track?.let {
+                    updateCurrentTrack(it)
+                }
+            }
+        }
+
+        // Observe playback state
+        viewModelScope.launch {
+            combine(
+                audioController.isPlaying,
+                audioController.playbackPosition,
+                audioController.playbackDuration,
+                audioController.shuffleEnabled,
+                audioController.repeatMode
+            ) { isPlaying, position, duration, shuffleEnabled, repeatMode ->
+                PlaybackState(
+                    isPlaying = isPlaying,
+                    progress = if (duration > 0) position.toFloat() / duration else 0f,
+                    duration = duration,
+                    isShuffleEnabled = shuffleEnabled,
+                    repeatMode = when (repeatMode) {
+                        AudioController.RepeatMode.OFF -> RepeatMode.OFF
+                        AudioController.RepeatMode.ONE -> RepeatMode.ONE
+                        AudioController.RepeatMode.ALL -> RepeatMode.ALL
+                    }
+                )
+            }.collect { state ->
+                _playbackState.value = state
+            }
+        }
+
+        // Observe queue
+        viewModelScope.launch {
+            audioController.queue.collect { tracks ->
+                _currentQueue.value = tracks.map { track ->
+                    TrackInfo(
+                        id = track.id,
+                        title = track.title,
+                        artist = track.artistName ?: "Unknown Artist",
+                        album = track.albumName ?: "Unknown Album",
+                        artworkPath = track.artworkPath,
+                        duration = track.durationMs,
+                        isFavorite = track.isFavorite
+                    )
+                }
+            }
+        }
+
+        // Observe queue position
+        viewModelScope.launch {
+            audioController.queuePosition.collect { position ->
+                _queuePosition.value = position
+            }
+        }
+    }
+
+    /**
+     * Update current track info
+     */
+    private fun updateCurrentTrack(track: Track) {
+        _currentTrack.value = TrackInfo(
+            id = track.id,
+            title = track.title,
+            artist = track.artistName ?: "Unknown Artist",
+            album = track.albumName ?: "Unknown Album",
+            artworkPath = track.artworkPath,
+            duration = track.durationMs,
+            isFavorite = track.isFavorite
+        )
+
+        // Update audio info
+        _audioInfo.value = AudioInfo(
+            format = track.format,
+            sampleRate = track.sampleRate,
+            bitDepth = track.bitDepth,
+            bitrate = track.bitrate,
+            isHighRes = isHighResAudio(track)
+        )
+    }
+
+    /**
+     * Get format from mime type
+     */
+    private fun getFormatFromMimeType(mimeType: String?): String {
+        return when {
+            mimeType == null -> "Unknown"
+            mimeType.contains("flac") -> "FLAC"
+            mimeType.contains("wav") -> "WAV"
+            mimeType.contains("mp3") -> "MP3"
+            mimeType.contains("m4a") -> "M4A"
+            mimeType.contains("ogg") -> "OGG"
+            mimeType.contains("ape") -> "APE"
+            mimeType.contains("dsd") -> "DSD"
+            else -> "Audio"
+        }
+    }
+
+    /**
+     * Check if track is high resolution
+     */
+    private fun isHighResAudio(track: Track): Boolean {
+        val sampleRate = track.sampleRate ?: 0
+        val bitDepth = track.bitDepth ?: 0
+        return sampleRate >= 48000 || bitDepth >= 24
+    }
+
+    /**
+     * Toggle play/pause
+     */
+    fun togglePlayPause() {
+        audioController.togglePlayPause()
+    }
+
+    /**
+     * Skip to next track
+     */
+    fun nextTrack() {
+        audioController.skipToNext()
+    }
+
+    /**
+     * Skip to previous track
+     */
+    fun previousTrack() {
+        audioController.skipToPrevious()
+    }
+
+    /**
+     * Seek to specific position
+     */
+    fun seekTo(position: Float) {
+        val durationMs = _playbackState.value.duration
+        if (durationMs > 0) {
+            val seekPosition = (position * durationMs).toLong()
+            audioController.seekTo(seekPosition)
+        }
+    }
+
+    /**
+     * Toggle shuffle mode
+     */
+    fun toggleShuffle() {
+        audioController.toggleShuffle()
+    }
+
+    /**
+     * Toggle repeat mode
+     */
+    fun toggleRepeat() {
+        audioController.cycleRepeatMode()
+    }
+
+    /**
+     * Toggle favorite status of current track
+     */
+    fun toggleFavorite() {
+        viewModelScope.launch {
+            try {
+                val currentTrack = _currentTrack.value
+                if (currentTrack != null) {
+                    val newFavoriteState = !currentTrack.isFavorite
+                    
+                    // Update in repository
+                    trackRepository.updateFavoriteStatus(currentTrack.id, newFavoriteState)
+                    
+                    // Update UI state
+                    _currentTrack.update { 
+                        it?.copy(isFavorite = newFavoriteState) 
+                    }
+
+                    Timber.d("Track favorite status: $newFavoriteState")
+                }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to toggle favorite")
+                _uiState.update { 
+                    it.copy(error = "Failed to update favorite: ${e.message}") 
+                }
+            }
+        }
+    }
+
+    /**
+     * Load and play track by ID
+     */
+    fun loadTrack(trackId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+
+                // Load track from repository
+                val track = trackRepository.getTrackById(trackId)
+                if (track != null) {
+                    // Play the track
+                    audioController.playTrack(track)
+                } else {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "Track not found"
+                        ) 
+                    }
+                }
+
+                _uiState.update { it.copy(isLoading = false) }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to load track: $trackId")
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load track: ${e.message}"
+                    ) 
+                }
+            }
+        }
+    }
+
+    /**
+     * Load and play a playlist
+     */
+    fun loadPlaylist(playlistId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+
+                // Load playlist with tracks
+                val playlistWithTracks = playlistRepository.getPlaylistWithTracks(playlistId)
+                if (playlistWithTracks != null && playlistWithTracks.tracks.isNotEmpty()) {
+                    // Play the playlist
+                    audioController.playQueue(playlistWithTracks.tracks)
+                } else {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "Playlist not found or empty"
+                        ) 
+                    }
+                }
+
+                _uiState.update { it.copy(isLoading = false) }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to load playlist: $playlistId")
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to load playlist: ${e.message}"
+                    ) 
+                }
+            }
+        }
+    }
+
+    /**
+     * Play all tracks from an album
+     */
+    fun playAlbum(albumName: String, startTrackId: String? = null) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+
+                // Get all tracks from album
+                val tracks = trackRepository.getTracksByAlbum(albumName).first()
+                if (tracks.isNotEmpty()) {
+                    // Find start index if trackId provided
+                    val startIndex = if (startTrackId != null) {
+                        tracks.indexOfFirst { it.id == startTrackId }.takeIf { it >= 0 } ?: 0
+                    } else {
+                        0
+                    }
+                    
+                    // Play the album
+                    audioController.playQueue(tracks, startIndex)
+                } else {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "No tracks found for album"
+                        ) 
+                    }
+                }
+
+                _uiState.update { it.copy(isLoading = false) }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to play album: $albumName")
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to play album: ${e.message}"
+                    ) 
+                }
+            }
+        }
+    }
+
+    /**
+     * Play all tracks from an artist
+     */
+    fun playArtist(artistName: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+
+                // Get all tracks from artist
+                val tracks = trackRepository.getTracksByArtist(artistName).first()
+                if (tracks.isNotEmpty()) {
+                    // Play all artist tracks
+                    audioController.playQueue(tracks)
+                } else {
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "No tracks found for artist"
+                        ) 
+                    }
+                }
+
+                _uiState.update { it.copy(isLoading = false) }
+
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to play artist: $artistName")
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        error = "Failed to play artist: ${e.message}"
+                    ) 
+                }
+            }
+        }
+    }
+
+    /**
+     * Add track to current queue
+     */
+    fun addToQueue(trackId: String) {
+        viewModelScope.launch {
+            try {
+                val track = trackRepository.getTrackById(trackId)
+                if (track != null) {
+                    audioController.addToQueue(track)
+                    Timber.d("Added track to queue: ${track.title}")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to add track to queue")
+                _uiState.update { 
+                    it.copy(error = "Failed to add to queue: ${e.message}") 
+                }
+            }
+        }
+    }
+
+    /**
+     * Clear current queue
+     */
+    fun clearQueue() {
+        audioController.clearQueue()
+    }
+
+    /**
+     * Stop playback
+     */
+    fun stop() {
+        audioController.stop()
+    }
+
+    /**
+     * Clear error state
+     */
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * Get current playback position in milliseconds
+     */
+    fun getCurrentPositionMs(): Long {
+        return audioController.playbackPosition.value
+    }
+
+    /**
+     * Format time for display
+     */
+    fun formatTime(timeMs: Long): String {
+        val totalSeconds = timeMs / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%d:%02d", minutes, seconds)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // AudioController is singleton, don't release it here
+    }
+}
+
+// Extension function for MutableStateFlow update
+private inline fun <T> MutableStateFlow<T>.update(function: (T) -> T) {
+    value = function(value)
+}
